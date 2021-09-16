@@ -1,0 +1,15 @@
+[Unit]
+Description=Poast
+After=network.target
+
+[Service]
+Type=simple
+User=me
+Group=me
+WorkingDirectory=/home/me/poast
+ExecStart=/home/me/poast/poast
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+
