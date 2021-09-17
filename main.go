@@ -17,7 +17,8 @@ import (
 func main() {
 	conf, err := loadConfig()
 	if err != nil {
-		panic(err)
+		fmt.Fprintf(os.Stderr, "failed to load config: %s", err.Error())
+		os.Exit(1)
 	}
 
 	slackApi := slack.New(
@@ -65,8 +66,6 @@ func main() {
 				fmt.Println("Connection failed. Retrying later...")
 			case socketmode.EventTypeConnected:
 				fmt.Println("Connected to Slack with Socket Mode.")
-			case socketmode.EventTypeHello:
-				fmt.Println("Got hello message.")
 			case socketmode.EventTypeEventsAPI:
 				eventsAPIEvent, ok := evt.Data.(slackevents.EventsAPIEvent)
 				if !ok {
@@ -92,7 +91,8 @@ func main() {
 						text := ev.Text
 						prefix := fmt.Sprintf(`<@%s> `, meSlack.UserID)
 						if !strings.HasPrefix(text, prefix) {
-							slackApi.SendMessage(ev.Channel, slack.MsgOptionText("Hi 👋. If you want me to tweet something, start your message with `@Poast `.", true))
+							slackApi.SendMessage(ev.Channel, slack.MsgOptionText(
+								"Hi 👋. If you want me to tweet something, start your message with `@Poast `.", true))
 							break
 						}
 
@@ -101,16 +101,19 @@ func main() {
 						tweet, _, err := twitterClient.Statuses.Update(text, nil)
 						if err != nil {
 							if apiError, ok := err.(twitter.APIError); ok && len(apiError.Errors) > 0 {
-								slackApi.SendMessage(ev.Channel, slack.MsgOptionText(fmt.Sprintf("ERROR: %s", apiError.Errors[0].Message), true))
+								slackApi.SendMessage(ev.Channel, slack.MsgOptionText(
+									fmt.Sprintf("ERROR: %s", apiError.Errors[0].Message), true))
 							} else {
-								slackApi.SendMessage(ev.Channel, slack.MsgOptionText(fmt.Sprintf("ERROR: %s", err.Error()), true))
+								slackApi.SendMessage(ev.Channel, slack.MsgOptionText(
+									fmt.Sprintf("ERROR: %s", err.Error()), true))
 							}
 							fmt.Printf("tweet err: %s\n", err.Error())
 							break
 						}
 
 						//log.Printf("https://twitter.com/%s/status/%s\n", meTwitter.ScreenName, tweet.IDStr)
-						slackApi.SendMessage(ev.Channel, slack.MsgOptionText(fmt.Sprintf("poasted! https://twitter.com/%s/status/%s", meTwitter.ScreenName, tweet.IDStr), true))
+						slackApi.SendMessage(ev.Channel, slack.MsgOptionText(
+							fmt.Sprintf("poasted! https://twitter.com/%s/status/%s", meTwitter.ScreenName, tweet.IDStr), true))
 
 					case *slackevents.MemberJoinedChannelEvent:
 						//fmt.Printf("user %q joined to channel %q", ev.User, ev.Channel)
@@ -120,66 +123,10 @@ func main() {
 				default:
 					slackClient.Debugf("unsupported Events API event received: %s", eventsAPIEvent.Type)
 				}
-			case socketmode.EventTypeInteractive:
+			case socketmode.EventTypeHello,
+				socketmode.EventTypeInteractive,
+				socketmode.EventTypeSlashCommand:
 				continue // ignored
-
-				callback, ok := evt.Data.(slack.InteractionCallback)
-				if !ok {
-					fmt.Printf("Ignored %+v\n", evt)
-					continue
-				}
-
-				fmt.Printf("Interaction received: %+v\n", callback)
-
-				var payload interface{}
-
-				switch callback.Type {
-				case slack.InteractionTypeBlockActions:
-					// See https://api.slack.com/apis/connections/socket-implement#button
-
-					slackClient.Debugf("button clicked!")
-				case slack.InteractionTypeShortcut:
-				case slack.InteractionTypeViewSubmission:
-					// See https://api.slack.com/apis/connections/socket-implement#modal
-				case slack.InteractionTypeDialogSubmission:
-				default:
-
-				}
-
-				slackClient.Ack(*evt.Request, payload)
-			case socketmode.EventTypeSlashCommand:
-				continue // ignored
-
-				cmd, ok := evt.Data.(slack.SlashCommand)
-				if !ok {
-					fmt.Printf("Ignored %+v\n", evt)
-					continue
-				}
-
-				slackClient.Debugf("Slash command received: %+v", cmd)
-
-				payload := map[string]interface{}{
-					"blocks": []slack.Block{
-						slack.NewSectionBlock(
-							&slack.TextBlockObject{
-								Type: slack.MarkdownType,
-								Text: "foo",
-							},
-							nil,
-							slack.NewAccessory(
-								slack.NewButtonBlockElement(
-									"",
-									"somevalue",
-									&slack.TextBlockObject{
-										Type: slack.PlainTextType,
-										Text: "bar",
-									},
-								),
-							),
-						),
-					}}
-
-				slackClient.Ack(*evt.Request, payload)
 			default:
 				fmt.Fprintf(os.Stderr, "Unexpected event type received: %s\n", evt.Type)
 			}
